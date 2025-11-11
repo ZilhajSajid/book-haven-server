@@ -29,6 +29,22 @@ async function run() {
 
     const db = client.db("bookHavendb");
     const bookHavenCollection = db.collection("books");
+    const myBooksCollection = db.collection("myBooks");
+    const usersCollection = db.collection("users");
+
+    // users related APIs
+    app.post("/users", async (req, res) => {
+      const newUser = req.body;
+      const email = req.body.email;
+      const query = { email: email };
+      const existingUser = await usersCollection.findOne(query);
+      if (existingUser) {
+        res.send({ message: "user already exists." });
+      } else {
+        const result = await usersCollection.insertOne(newUser);
+        res.send(result);
+      }
+    });
 
     app.get("/all-books", async (req, res) => {
       const cursor = bookHavenCollection.find();
@@ -70,6 +86,30 @@ async function run() {
       res.send(result);
     });
 
+    // myBooks APIs
+    app.get("/myBooks", async (req, res) => {
+      const email = req.query.email;
+      const query = {};
+      if (email) {
+        query.userEmail = email;
+      }
+      const cursor = myBooksCollection.find(query);
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+
+    app.post("/myBooks", async (req, res) => {
+      const newBooks = req.body;
+      const result = await myBooksCollection.insertOne(newBooks);
+      res.send(result);
+    });
+
+    app.delete("/myBooks/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await myBooksCollection.deleteOne(query);
+      res.send(result);
+    });
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
