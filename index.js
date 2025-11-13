@@ -69,17 +69,12 @@ async function run() {
       const result = await cursor.toArray();
       res.send(result);
     });
-    app.get("/featured-books", async (req, res) => {
-      const cursor = bookHavenCollection.find().sort({ rating: -1 }).limit(1);
-      const result = await cursor.toArray();
-      res.send(result[0]);
-    });
 
     app.get("/all-books/:id", async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const result = await bookHavenCollection.findOne(query);
-      res.send(result);
+      const { id } = req.params;
+      const book = await bookHavenCollection.findOne({ _id: new ObjectId(id) });
+      if (!book) return res.status(404).send({ message: "Book not found" });
+      res.send(book);
     });
 
     app.post("/all-books", async (req, res) => {
@@ -116,9 +111,16 @@ async function run() {
       if (email) {
         query.userEmail = email;
       }
-      const cursor = myBooksCollection.find(query);
+      const cursor = myBooksCollection.find(query).limit(6);
       const result = await cursor.toArray();
       res.send(result);
+    });
+
+    app.get("/myBooks/:id", async (req, res) => {
+      const { id } = req.params;
+      const book = await myBooksCollection.findOne({ _id: new ObjectId(id) });
+      if (!book) return res.status(404).send({ message: "Book not found" });
+      res.send(book);
     });
 
     app.post("/myBooks", async (req, res) => {
