@@ -1,3 +1,4 @@
 node_modules
 .env
 book-haven-3ab70-firebase-adminsdk.json
+.vercel
