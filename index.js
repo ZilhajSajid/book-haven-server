@@ -34,15 +34,27 @@ async function run() {
 
     // users related APIs
     app.post("/users", async (req, res) => {
-      const newUser = req.body;
-      const email = req.body.email;
-      const query = { email: email };
-      const existingUser = await usersCollection.findOne(query);
-      if (existingUser) {
-        res.send({ message: "user already exists." });
-      } else {
-        const result = await usersCollection.insertOne(newUser);
-        res.send(result);
+      try {
+        const { name, email, password, photoURL } = req.body;
+        if (!name || !email || !photoURL)
+          return res.status(400).send({ message: "All fields are required." });
+
+        const existingUser = await usersCollection.findOne({ email });
+        if (existingUser)
+          return res.status(400).send({ message: "User already exists." });
+
+        const result = await usersCollection.insertOne({
+          name,
+          email,
+          password: password || null,
+          photoURL,
+        });
+        return res
+          .status(201)
+          .send({ message: "User registered successfully!", result });
+      } catch (error) {
+        console.error(error);
+        return res.status(500).send({ message: "Server error" });
       }
     });
 
@@ -113,17 +125,23 @@ async function run() {
       try {
         const newBook = req.body;
         const email = newBook.userEmail;
-        const bookId = newBook._id; // unique book id
+        const { title, author } = newBook;
 
         if (!email)
           return res.status(400).send({ message: "Email is required" });
-        if (!bookId)
-          return res.status(400).send({ message: "Book ID is required" });
+        if (!title || !author)
+          return res
+            .status(400)
+            .send({ message: "Title and Author are required" });
 
-        // Check if this user already added this specific book
+        // Remove any existing _id to avoid MongoDB conflict
+        delete newBook._id;
+
+        // Check if this user already added this book
         const existingBook = await myBooksCollection.findOne({
           userEmail: email,
-          _id: bookId, // match by book _id
+          title,
+          author,
         });
 
         if (existingBook) {
@@ -140,7 +158,6 @@ async function run() {
         res.status(500).send({ message: "Server error" });
       }
     });
-
     app.get("/myBooks", async (req, res) => {
       const email = req.query.email;
       if (!email) return res.status(400).send({ message: "Email is required" });
@@ -151,10 +168,27 @@ async function run() {
 
     app.delete("/myBooks/:id", async (req, res) => {
       const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const result = await myBooksCollection.deleteOne(query);
-      res.send(result);
+
+      try {
+        // Check if the id looks like an ObjectId
+        const query =
+          ObjectId.isValid(id) && id.length === 24
+            ? { _id: new ObjectId(id) }
+            : { _id: id };
+
+        const result = await myBooksCollection.deleteOne(query);
+
+        if (result.deletedCount > 0) {
+          res.send({ message: "Book deleted successfully!", deletedCount: 1 });
+        } else {
+          res.status(404).send({ message: "Book not found." });
+        }
+      } catch (error) {
+        console.error("Error deleting book:", error);
+        res.status(500).send({ message: "Server error while deleting book." });
+      }
     });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
