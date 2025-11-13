@@ -31,6 +31,7 @@ async function run() {
     const bookHavenCollection = db.collection("books");
     const myBooksCollection = db.collection("myBooks");
     const usersCollection = db.collection("users");
+    const commentsCollection = db.collection("comments");
 
     // users related APIs
     app.post("/users", async (req, res) => {
@@ -68,6 +69,11 @@ async function run() {
       const cursor = bookHavenCollection.find();
       const result = await cursor.toArray();
       res.send(result);
+    });
+    app.get("/featured-books", async (req, res) => {
+      const cursor = bookHavenCollection.find().sort({ rating: -1 }).limit(1);
+      const result = await cursor.toArray();
+      res.send(result[0]);
     });
 
     app.get("/all-books/:id", async (req, res) => {
@@ -136,10 +142,8 @@ async function run() {
             .status(400)
             .send({ message: "Title and Author are required" });
 
-        // Remove any existing _id to avoid MongoDB conflict
         delete newBook._id;
 
-        // Check if this user already added this book
         const existingBook = await myBooksCollection.findOne({
           userEmail: email,
           title,
@@ -168,26 +172,74 @@ async function run() {
       res.send(result);
     });
 
+    // POST /comments
+    app.post("/comments", async (req, res) => {
+      const comment = req.body;
+      try {
+        const result = await commentsCollection.insertOne(comment);
+        res.send({ insertedId: result.insertedId });
+      } catch (err) {
+        res.status(500).send({ message: "Failed to add comment" });
+      }
+    });
+
+    app.get("/comments", async (req, res) => {
+      const { bookId } = req.query;
+      try {
+        const comments = await commentsCollection.find({ bookId }).toArray();
+        res.send(comments);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to fetch comments" });
+      }
+    });
+
+    app.put("/myBooks/:id", async (req, res) => {
+      const id = req.params.id;
+      const { _id, ...updatedBookFields } = req.body; // exclude _id
+
+      try {
+        const result = await myBooksCollection.updateOne(
+          { _id: new ObjectId(id) }, // match by original ObjectId
+          { $set: updatedBookFields } // only set editable fields
+        );
+
+        if (result.modifiedCount > 0) {
+          res.send({ success: true, message: "Book updated successfully" });
+        } else {
+          res.send({ success: false, message: "No changes were made" });
+        }
+      } catch (error) {
+        console.error("Error updating book:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to update book" });
+      }
+    });
+
     app.delete("/myBooks/:id", async (req, res) => {
       const id = req.params.id;
 
       try {
-        // Check if the id looks like an ObjectId
-        const query =
-          ObjectId.isValid(id) && id.length === 24
-            ? { _id: new ObjectId(id) }
-            : { _id: id };
+        const query = {
+          $or: [
+            { _id: new ObjectId(id) }, // Delete by myBooks _id
+            { originalId: id }, // Delete by allBooks originalId
+          ],
+        };
 
         const result = await myBooksCollection.deleteOne(query);
 
         if (result.deletedCount > 0) {
-          res.send({ message: "Book deleted successfully!", deletedCount: 1 });
+          res.send({
+            deletedCount: result.deletedCount,
+            message: "Book deleted successfully",
+          });
         } else {
-          res.status(404).send({ message: "Book not found." });
+          res.status(404).send({ message: "Book not found" });
         }
       } catch (error) {
-        console.error("Error deleting book:", error);
-        res.status(500).send({ message: "Server error while deleting book." });
+        console.error("❌ Error deleting book:", error);
+        res.status(500).send({ message: "Error deleting book" });
       }
     });
 
