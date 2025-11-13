@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 const port = process.env.PORT || 3000;
@@ -8,7 +9,7 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.bmwxjo0.mongodb.net/?appName=Cluster0`;
+const uri = `mongodb+srv://${process.env.USER_NAME}:${process.env.USER_PASS}@cluster0.bmwxjo0.mongodb.net/?appName=Cluster0`;
 
 const client = new MongoClient(uri, {
   serverApi: {
@@ -45,10 +46,21 @@ async function run() {
       }
     });
 
+    app.get("/latest-books", async (req, res) => {
+      const cursor = bookHavenCollection.find().sort({ rating: -1 }).limit(6);
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+
     app.get("/all-books", async (req, res) => {
       const cursor = bookHavenCollection.find();
       const result = await cursor.toArray();
       res.send(result);
+    });
+    app.get("/featured-books", async (req, res) => {
+      const cursor = bookHavenCollection.find().sort({ rating: -1 }).limit(1);
+      const result = await cursor.toArray();
+      res.send(result[0]);
     });
 
     app.get("/all-books/:id", async (req, res) => {
@@ -98,8 +110,42 @@ async function run() {
     });
 
     app.post("/myBooks", async (req, res) => {
-      const newBooks = req.body;
-      const result = await myBooksCollection.insertOne(newBooks);
+      try {
+        const newBook = req.body;
+        const email = newBook.userEmail;
+        const bookId = newBook._id; // unique book id
+
+        if (!email)
+          return res.status(400).send({ message: "Email is required" });
+        if (!bookId)
+          return res.status(400).send({ message: "Book ID is required" });
+
+        // Check if this user already added this specific book
+        const existingBook = await myBooksCollection.findOne({
+          userEmail: email,
+          _id: bookId, // match by book _id
+        });
+
+        if (existingBook) {
+          return res
+            .status(400)
+            .send({ message: "You have already added this book." });
+        }
+
+        // Insert the book for this user
+        const result = await myBooksCollection.insertOne(newBook);
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    app.get("/myBooks", async (req, res) => {
+      const email = req.query.email;
+      if (!email) return res.status(400).send({ message: "Email is required" });
+
+      const result = await myBooksCollection.find({ email }).toArray();
       res.send(result);
     });
 
